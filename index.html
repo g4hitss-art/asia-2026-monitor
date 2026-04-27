@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Monitor Vuelo Carlos</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050812;--panel:#080d1e;--card:#0c1228;--rim:#162040;
+  --gold:#D4A843;--goldL:#ECC96A;--goldD:#8B6520;
+  --jade:#00C896;--jadeL:#4DDDBA;
+  --coral:#FF5757;--sky:#3B9EFF;--skyL:#7ABCFF;
+  --text:#EAE8FF;--sub:#7B82A8;--muted:#3D4566;
+  --mono:'Space Mono',monospace;--head:'Syne',sans-serif;--body:'Inter',sans-serif;
+  --nav:70px;
+  /* alias para el resto del CSS */
+  --amber:var(--gold);--amberL:var(--goldL);
+  --green:var(--jade);--red:var(--coral);--blue:var(--sky);
+}
+html,body{height:100%;overflow:hidden;color:var(--text);font-family:var(--body);}
+body{
+  background:var(--bg);
+  position:relative;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 70% 45% at 15% 0%,#132060 0%,transparent 65%),
+    radial-gradient(ellipse 55% 35% at 85% 100%,#0a1848 0%,transparent 60%);
+  pointer-events:none;z-index:0;
+}
+.page,.nav{position:relative;z-index:1;}
+
+/* ── Páginas ── */
+.page{position:fixed;inset:0;bottom:var(--nav);overflow-y:auto;overflow-x:hidden;display:none;-webkit-overflow-scrolling:touch;animation:fUp .22s ease}
+.page.active{display:block}
+@keyframes fUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.inner{padding:20px 18px 28px;max-width:680px;margin:0 auto}
+
+/* ── Nav inferior ── */
+.nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav);background:linear-gradient(180deg,var(--panel),var(--bg));border-top:1px solid var(--rim);backdrop-filter:blur(20px);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:none;background:none;cursor:pointer;color:var(--muted);font-family:var(--body);font-size:10px;font-weight:500;letter-spacing:.03em;transition:color .2s;padding:0;position:relative}
+.nb::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:var(--amber);border-radius:0 0 3px 3px;transform:scaleX(0);transition:transform .2s}
+.nb.on{color:var(--gold);text-shadow:0 0 12px #D4A84366}.nb.on::before{transform:scaleX(1)}
+.ni{font-size:22px;line-height:1}
+
+/* ── Headers ── */
+.ph{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.pt{font-family:var(--head);font-size:24px;font-weight:800;letter-spacing:-.02em}
+.ps{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;margin-top:3px}
+
+/* ── Cards ── */
+.card{background:linear-gradient(145deg,var(--card),#0a1030);border:1px solid var(--rim);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 4px 24px #00000044}
+.cl{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+
+/* ── Métricas ── */
+.m2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.mb{background:linear-gradient(135deg,var(--panel),#0a1030);border:1px solid var(--rim);border-radius:14px;padding:16px;position:relative;overflow:hidden;box-shadow:0 2px 16px #00000033}
+.mb::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--ac,var(--amber))}
+.ml{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+.mv{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ac,var(--amber));line-height:1}
+.mh{font-size:11px;color:var(--sub);margin-top:5px}
+
+/* ── Ruta ── */
+.ruta{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.ruta-ap{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--text)}
+.ruta-line{flex:1;border-top:1px dashed var(--rim)}
+.ruta-esc{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.08em;margin-bottom:8px}
+.tags{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:20px;background:var(--panel);color:var(--sub);border:1px solid var(--rim)}
+.pr-row{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--rim)}
+.pr-lbl{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.pr-val{font-family:var(--mono);font-size:15px;font-weight:700}
+
+/* ── Alerta ── */
+.alerta{background:linear-gradient(135deg,var(--jade)12,var(--jade)06);border:1px solid var(--jade)44;border-radius:14px;padding:14px 16px;display:none;margin-bottom:14px;gap:12px;align-items:flex-start}
+.alerta.show{display:flex}
+.at{font-family:var(--head);font-size:14px;color:var(--jade);font-weight:700;margin-bottom:3px}
+.ad{font-size:12px;color:var(--sub);line-height:1.5}
+
+/* ── Gráfica ── */
+.chbox{height:200px;position:relative}
+
+/* ── Live ── */
+.live{display:flex;align-items:center;gap:6px}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--jade);box-shadow:0 0 8px var(--jade)88;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── Botón buscar ── */
+.btnp{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;background:linear-gradient(135deg,var(--gold),var(--goldL));color:#050812;border:none;border-radius:14px;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.06em;cursor:pointer;transition:all .2s;margin-bottom:14px}
+.btnp:hover:not(:disabled){background:var(--goldL);box-shadow:0 8px 32px var(--gold)55,0 0 0 1px var(--gold)33;transform:translateY(-2px)}
+.btnp:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btnp .ico{font-size:18px}
+.btnp.loading .ico{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sbox{border-radius:12px;padding:12px 16px;font-family:var(--mono);font-size:11px;margin-bottom:14px;display:none}
+.sbox.show{display:block}
+.sok{background:var(--green)10;color:var(--jade);border:1px solid var(--green)33}
+.serr{background:var(--red)10;color:var(--coral);border:1px solid var(--red)33}
+.swait{background:var(--amber)10;color:var(--gold);border:1px solid var(--amber)33}
+
+/* ── Schedule ── */
+.schgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sci{background:linear-gradient(135deg,var(--panel),#0a1030);border:1px solid var(--rim);border-radius:12px;padding:12px 14px;box-shadow:inset 0 1px 0 #ffffff08}
+.scd{font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:.08em;margin-bottom:4px}
+.scs{font-family:var(--body);font-size:12px;color:var(--sub)}
+.scn{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--text);margin-top:6px}
+
+/* ── Ranking banner ── */
+.rkban{background:linear-gradient(135deg,#00C89618,#00C89608);border:1px solid #00C89644;border-radius:14px;padding:16px;display:none;margin-bottom:14px}
+.rkban.show{display:block}
+.rkbl{font-family:var(--mono);font-size:9px;color:var(--jade);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.rkbv{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--jade);line-height:1}
+.rkbs{font-size:11px;color:var(--sub);margin-top:4px;margin-bottom:12px}
+.rktg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rkti{background:#00C89610;border:1px solid #00C89630;border-radius:10px;padding:10px 12px}
+.rktl{font-family:var(--mono);font-size:8px;color:var(--jade);letter-spacing:.08em;margin-bottom:3px}
+.rktv{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text)}
+
+/* ── Ranking filas ── */
+.rkrow{display:grid;grid-template-columns:38px 1fr auto;border-bottom:1px solid var(--rim);align-items:center}
+.rkrow:last-child{border-bottom:none}
+.rkrow.rg{background:#FFD70010;border-left:3px solid #FFD700}
+.rkrow.rs{background:#C0C0C010;border-left:3px solid #C0C0C0}
+.rkrow.rb{background:#CD7F3210;border-left:3px solid #CD7F32}
+.rknum{padding:14px 0 14px 10px;font-family:var(--mono);font-size:16px;font-weight:700;text-align:center}
+.cg{color:#FFD700}.cs{color:#C0C0C0}.cb{color:#CD7F32}.cm{color:var(--muted);font-size:13px}
+.rkmain{padding:12px 10px 12px 6px}
+.rkdt{font-family:var(--mono);font-size:10px;color:var(--sub);margin-bottom:5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.rkpr{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rkpitem{}.rkplbl{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.rkpval{font-family:var(--mono);font-size:13px;font-weight:700}
+.rktot{padding:12px 14px 12px 0;text-align:right}
+.rktpx{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--gold)}
+.rkt4{font-family:var(--mono);font-size:10px;color:var(--sub);margin-top:3px}
+.rkor{margin-top:4px;display:flex;justify-content:flex-end}
+.bm{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:20px;background:var(--blue)22;color:var(--sky);border:1px solid var(--blue)44}
+.ba{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:20px;background:var(--muted)15;color:var(--muted);border:1px solid var(--rim)}
+.du{color:var(--jade)}.dd{color:var(--coral)}.df{color:var(--muted)}
+
+/* ── Historial ── */
+.hrow{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid var(--rim);padding:12px 4px;align-items:center;gap:12px}
+.hrow:last-child{border-bottom:none}
+.hfecha{font-family:var(--mono);font-size:10px;color:var(--sub);margin-bottom:4px;display:flex;align-items:center;gap:5px}
+.hpr{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hpl{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.hpv{font-family:var(--mono);font-size:12px;color:var(--text)}
+.hright{text-align:right}
+.htpx{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--gold)}
+.ht4{font-family:var(--mono);font-size:10px;color:var(--sub);margin-top:2px}
+
+/* ── Links ── */
+.lrow{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--rim);text-decoration:none}
+.lrow:last-child{border-bottom:none}
+.ll{font-size:13px;color:var(--text)}
+.ls{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+.la{color:var(--gold);font-size:16px}
+
+/* ── Misc ── */
+.empty{text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted);padding:40px 20px}
+.sep{color:var(--muted);font-size:11px;padding:0 4px}
+</style>
+</head>
+<body>
+
+<script>
+const CFG={
+  SUPABASE_URL:"https://qalxstxtuuvybudkqtpd.supabase.co",
+  SUPABASE_KEY:"sb_secret_O5MF06-7ueAeDlo8zLg4YQ_LU4VaycC",
+  GITHUB_TOKEN:"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",
+  GITHUB_OWNER:"g4hitss-art",
+  GITHUB_REPO:"asia-2026-monitor",
+  GITHUB_WORKFLOW:"monitor_carlos.yml",
+};
+const BASE={ida_px:3160141,vuelta_px:3163941,total_px:6324082,total_4px:25296328};
+const fC=n=>n?"$"+Math.round(n).toLocaleString("es-CO"):"—";
+const fFH=iso=>{if(!iso)return"—";const d=new Date(iso);return d.toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"2-digit"})+" · "+d.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"})};
+</script>
+
+<!-- ══════════════════════════════════════════
+     PG 1: RESUMEN
+════════════════════════════════════════════ -->
+<div class="page active" id="pg-resumen">
+<div class="inner">
+
+  <div class="ph">
+    <div>
+      <div class="pt">Ruta Carlos ✈️</div>
+      <div class="ps">BOG → SAL → SFO → NRT · ICN → SFO → SAL → BOG</div>
+    </div>
+    <div class="live"><div class="ldot"></div><span style="font-family:var(--mono);font-size:10px;color:var(--muted)" id="r-time">—</span></div>
+  </div>
+
+  <div class="alerta" id="r-alerta">
+    <div style="font-size:22px">🔔</div>
+    <div><div class="at" id="r-at">—</div><div class="ad" id="r-ad">—</div></div>
+  </div>
+
+  <div class="m2">
+    <div class="mb" style="--ac:var(--amber)">
+      <div class="ml">Último total / px</div>
+      <div class="mv" id="r-ultimo">—</div>
+      <div class="mh" id="r-ultimo-h">—</div>
+    </div>
+    <div class="mb" style="--ac:var(--green)">
+      <div class="ml">Mejor encontrado / px</div>
+      <div class="mv" id="r-mejor">—</div>
+      <div class="mh" id="r-mejor-h">—</div>
+    </div>
+    <div class="mb" style="--ac:var(--blue)">
+      <div class="ml">Base Carlos / px</div>
+      <div class="mv">$6,324,082</div>
+      <div class="mh">Ida + Vuelta</div>
+    </div>
+    <div class="mb" style="--ac:var(--amber)">
+      <div class="ml">Ahorro grupo (4px)</div>
+      <div class="mv" id="r-ahorro">—</div>
+      <div class="mh" id="r-ahorro-h">4 personas</div>
+    </div>
+  </div>
+
+  <!-- IDA -->
+  <div class="card">
+    <div class="cl">IDA — Viernes 23 Oct 2026</div>
+    <div class="ruta">
+      <div class="ruta-ap">BOG</div>
+      <div style="font-size:10px;color:var(--gold);padding:0 4px">✦</div>
+      <div class="ruta-line"></div>
+      <div style="font-size:10px;color:var(--gold);padding:0 4px">✦</div>
+      <div class="ruta-line"></div>
+      <div style="font-size:10px;color:var(--gold);padding:0 4px">✦</div>
+      <div class="ruta-ap">NRT</div>
+    </div>
+    <div class="ruta-esc">2 ESCALAS: SAN SALVADOR (SAL) + SAN FRANCISCO (SFO)</div>
+    <div class="tags">
+      <span class="tag">Avianca BOG→SAL</span>
+      <span class="tag">Avianca SAL→SFO</span>
+      <span class="tag">Zipair SFO→NRT</span>
+      <span class="tag">4:25am</span>
+      <span class="tag">~25h 35m</span>
+    </div>
+    <div class="pr-row"><div class="pr-lbl">Base Carlos</div><div class="pr-val" style="color:var(--gold)">$3,160,141<span style="font-size:9px;color:var(--muted)">/px</span></div></div>
+    <div class="pr-row" style="border-top:none;margin-top:2px;padding-top:0"><div class="pr-lbl">Último precio</div><div class="pr-val" style="color:var(--sky)" id="r-ida-ult">—</div></div>
+  </div>
+
+  <!-- VUELTA -->
+  <div class="card">
+    <div class="cl">VUELTA — Domingo 15 Nov 2026</div>
+    <div class="ruta">
+      <div class="ruta-ap">ICN</div>
+      <div style="font-size:10px;color:var(--jade);padding:0 4px">✦</div>
+      <div class="ruta-line"></div>
+      <div style="font-size:10px;color:var(--jade);padding:0 4px">✦</div>
+      <div class="ruta-line"></div>
+      <div style="font-size:10px;color:var(--jade);padding:0 4px">✦</div>
+      <div class="ruta-ap">BOG</div>
+    </div>
+    <div class="ruta-esc">2 ESCALAS: SAN FRANCISCO (SFO) + SAN SALVADOR (SAL)</div>
+    <div class="tags">
+      <span class="tag">Air Premia ICN→SFO</span>
+      <span class="tag">Avianca SFO→SAL</span>
+      <span class="tag">Avianca SAL→BOG</span>
+      <span class="tag">6:55pm</span>
+      <span class="tag">~30h 55m</span>
+    </div>
+    <div class="pr-row"><div class="pr-lbl">Base Carlos</div><div class="pr-val" style="color:var(--gold)">$3,163,941<span style="font-size:9px;color:var(--muted)">/px</span></div></div>
+    <div class="pr-row" style="border-top:none;margin-top:2px;padding-top:0"><div class="pr-lbl">Último precio</div><div class="pr-val" style="color:var(--jade)" id="r-vta-ult">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="cl">Evolución precio total / persona</div>
+    <div class="chbox"><canvas id="ch"></canvas></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PG 2: RANKING
+════════════════════════════════════════════ -->
+<div class="page" id="pg-ranking">
+<div class="inner">
+
+  <div class="ph">
+    <div><div class="pt">Ranking 🏆</div><div class="ps">MEJOR PRECIO TOTAL — IDA + VUELTA / PERSONA</div></div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted)" id="rk-n">—</div>
+  </div>
+
+  <div class="rkban" id="rk-ban">
+    <div class="rkbl">🥇 Mejor precio encontrado / persona</div>
+    <div class="rkbv" id="rk-bv">—</div>
+    <div class="rkbs" id="rk-bw">—</div>
+    <div class="rktg">
+      <div class="rkti"><div class="rktl">IDA / persona</div><div class="rktv" id="rk-bi">—</div></div>
+      <div class="rkti"><div class="rktl">VUELTA / persona</div><div class="rktv" id="rk-bvu">—</div></div>
+      <div class="rkti"><div class="rktl">TOTAL 4 PERSONAS</div><div class="rktv" id="rk-b4">—</div></div>
+      <div class="rkti"><div class="rktl">VS BASE CARLOS</div><div class="rktv" id="rk-bd">—</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="rk-list"><div class="empty">Cargando...</div></div>
+  </div>
+
+  <div style="display:flex;gap:12px;font-family:var(--mono);font-size:9px;color:var(--muted);padding:2px 0">
+    <span><span class="bm">👆 MANUAL</span> botón</span>
+    <span><span class="ba">⏱ AUTO</span> programado</span>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PG 3: HISTORIAL
+════════════════════════════════════════════ -->
+<div class="page" id="pg-historial">
+<div class="inner">
+  <div class="ph">
+    <div><div class="pt">Historial 📋</div><div class="ps">TODAS LAS BÚSQUEDAS · MÁS RECIENTE PRIMERO</div></div>
+  </div>
+  <div class="card" style="padding:0 18px">
+    <div id="hist-list"><div class="empty">Cargando...</div></div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PG 4: BUSCAR
+════════════════════════════════════════════ -->
+<div class="page" id="pg-buscar">
+<div class="inner">
+
+  <div class="ph">
+    <div><div class="pt">Buscar 🔍</div><div class="ps">BÚSQUEDA MANUAL + HORARIO AUTOMÁTICO</div></div>
+  </div>
+
+  <button class="btnp" id="btn-main" onclick="buscarAhora()">
+    <span class="ico" id="btn-ico">🔍</span>
+    <span id="btn-txt">BUSCAR AHORA</span>
+  </button>
+  <div class="sbox" id="sbox"></div>
+
+  <div class="card">
+    <div class="cl">Estado de búsquedas</div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--rim)">
+      <div style="font-size:13px">Última búsqueda manual</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--gold)" id="b-ult">—</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--rim)">
+      <div style="font-size:13px">Total búsquedas</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text)" id="b-tot">—</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0">
+      <div style="font-size:13px">Próxima automática</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--sub)">Según horario</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cl">Horario automático GitHub Actions</div>
+    <div class="schgrid">
+      <div class="sci"><div class="scd">MAR + MIÉ</div><div class="scs">Ventana tarifas Asia</div><div class="scn">6×/día</div></div>
+      <div class="sci"><div class="scd">LUN 11PM</div><div class="scs">Tarifas martes Tokio</div><div class="scn">1×</div></div>
+      <div class="sci"><div class="scd">JUE–DOM</div><div class="scs">Revisión estándar</div><div class="scn">2×/día</div></div>
+      <div class="sci"><div class="scd">MANUAL</div><div class="scs">Botón en esta pantalla</div><div class="scn">Tú 👆</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cl">Links de compra directos</div>
+    <a class="lrow" href="https://www.skyscanner.com.co/transporte/vuelos/bog/nrt/261023/?adults=4&cabinclass=economy" target="_blank">
+      <div><div class="ll">Skyscanner — IDA</div><div class="ls">BOG→NRT · 23 Oct · 4 adultos</div></div><div class="la">↗</div>
+    </a>
+    <a class="lrow" href="https://www.skyscanner.com.co/transporte/vuelos/icn/bog/261115/?adults=4&cabinclass=economy" target="_blank">
+      <div><div class="ll">Skyscanner — VUELTA</div><div class="ls">ICN→BOG · 15 Nov · 4 adultos</div></div><div class="la">↗</div>
+    </a>
+    <a class="lrow" href="https://www.avianca.com" target="_blank">
+      <div><div class="ll">Avianca.com</div><div class="ls">BOG↔SAL↔SFO tramos</div></div><div class="la">↗</div>
+    </a>
+    <a class="lrow" href="https://www.zipair.net/en/flight/search" target="_blank">
+      <div><div class="ll">Zipair — SFO→NRT</div><div class="ls">Tramo transpacífico ida</div></div><div class="la">↗</div>
+    </a>
+    <a class="lrow" href="https://airpremia.com/en/booking/" target="_blank">
+      <div><div class="ll">Air Premia — ICN→SFO</div><div class="ls">Tramo transpacífico vuelta</div></div><div class="la">↗</div>
+    </a>
+  </div>
+
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     NAV
+════════════════════════════════════════════ -->
+<nav class="nav">
+  <button class="nb on" onclick="go('resumen',this)"><span class="ni">📊</span><span>Resumen</span></button>
+  <button class="nb" onclick="go('ranking',this)"><span class="ni">🏆</span><span>Ranking</span></button>
+  <button class="nb" onclick="go('historial',this)"><span class="ni">📋</span><span>Historial</span></button>
+  <button class="nb" onclick="go('buscar',this)"><span class="ni">🔍</span><span>Buscar</span></button>
+</nav>
+
+<script>
+// ── Nav ──────────────────────────────────────────────────────
+function go(id,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
+  document.getElementById('pg-'+id).classList.add('active');
+  btn.classList.add('on');
+}
+
+// ── Datos ────────────────────────────────────────────────────
+let datos=[],ch=null;
+
+async function cargar(){
+  try{
+    const r=await fetch(`${CFG.SUPABASE_URL}/rest/v1/monitor_carlos?select=*&order=fecha_consulta.desc&limit=200`,
+      {headers:{"apikey":CFG.SUPABASE_KEY,"Authorization":`Bearer ${CFG.SUPABASE_KEY}`}});
+    if(!r.ok)throw new Error(r.status);
+    datos=await r.json();
+  }catch(e){
+    console.warn("Supabase no disponible — modo demo");
+    datos=demo();
+  }
+  render();
+}
+
+function demo(){
+  const base=new Date();base.setDate(base.getDate()-14);
+  return Array.from({length:18},(_,i)=>{
+    const d=new Date(base);d.setHours(d.getHours()+i*19);
+    const ida=3160141+Math.round((Math.random()-.5)*220000);
+    const vta=3163941+Math.round((Math.random()-.5)*190000);
+    return{fecha_consulta:d.toISOString(),precio_ida_px:ida,precio_vuelta_px:vta,
+      precio_total_px:ida+vta,precio_total_4px:(ida+vta)*4,
+      tasa_ref:3701.65,alerta_enviada:i===7,es_precio_base:i===0,es_manual:i===4||i===11};
+  });
+}
+
+function render(){
+  if(!datos.length)return;
+  renderResumen();renderRanking();renderHistorial();renderBuscar();
+  document.getElementById('r-time').textContent=
+    new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+}
+
+// ── PG 1: Resumen ────────────────────────────────────────────
+function renderResumen(){
+  const ult=datos[0];
+  const mej=[...datos].sort((a,b)=>a.precio_total_px-b.precio_total_px)[0];
+
+  document.getElementById('r-ultimo').textContent=fC(ult.precio_total_px);
+  document.getElementById('r-ultimo-h').textContent=fFH(ult.fecha_consulta);
+  document.getElementById('r-ida-ult').textContent=fC(ult.precio_ida_px)+'/px';
+  document.getElementById('r-vta-ult').textContent=fC(ult.precio_vuelta_px)+'/px';
+
+  document.getElementById('r-mejor').textContent=fC(mej.precio_total_px);
+  const pM=((BASE.total_px-mej.precio_total_px)/BASE.total_px*100).toFixed(1);
+  document.getElementById('r-mejor-h').textContent=
+    mej.precio_total_px<BASE.total_px?`${pM}% bajo base Carlos`:`+${Math.abs(pM)}% sobre Carlos`;
+
+  const ah4=Math.abs(BASE.total_px-mej.precio_total_px)*4;
+  document.getElementById('r-ahorro').textContent=fC(ah4);
+  document.getElementById('r-ahorro-h').textContent=
+    mej.precio_total_px<BASE.total_px?`${pM}% de ahorro · 4 personas`:`Sigue sobre el base`;
+
+  if(ult.precio_total_px<BASE.total_px){
+    const d=BASE.total_px-ult.precio_total_px;
+    const p=(d/BASE.total_px*100).toFixed(1);
+    document.getElementById('r-alerta').classList.add('show');
+    document.getElementById('r-at').textContent=`Precio ${p}% más bajo que el base de Carlos`;
+    document.getElementById('r-ad').textContent=
+      `Hoy: ${fC(ult.precio_total_px)}/px · Base: ${fC(BASE.total_px)}/px · Ahorro grupo: ${fC(d*4)}`;
+  }
+  renderChart();
+}
+
+function renderChart(){
+  const inv=[...datos].reverse();
+  const ctx=document.getElementById('ch').getContext('2d');
+  if(ch)ch.destroy();
+  ch=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:inv.map(r=>r.fecha_consulta),
+      datasets:[
+        {label:'Total/px',data:inv.map(r=>r.precio_total_px),borderColor:'#D4A843',backgroundColor:'#D4A84318',borderWidth:2,pointRadius:3,pointBackgroundColor:'#D4A843',tension:.3,fill:true},
+        {label:'Ida/px',data:inv.map(r=>r.precio_ida_px),borderColor:'#3B9EFF',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,borderDash:[4,3],tension:.3},
+        {label:'Vta/px',data:inv.map(r=>r.precio_vuelta_px),borderColor:'#00C896',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,borderDash:[4,3],tension:.3},
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{intersect:false,mode:'index'},
+      plugins:{
+        legend:{labels:{color:'#7B82A8',font:{family:'Space Mono',size:9},boxWidth:10}},
+        tooltip:{backgroundColor:'#0c1228',borderColor:'#162040',borderWidth:1,
+          titleColor:'#D4A843',bodyColor:'#e2e0f5',
+          titleFont:{family:'Space Mono',size:10},bodyFont:{family:'Space Mono',size:10},
+          callbacks:{label:c=>` ${c.dataset.label}: ${fC(c.raw)}`}}
+      },
+      scales:{
+        x:{type:'time',time:{unit:'day',displayFormats:{day:'dd MMM'}},
+          ticks:{color:'#3D4566',font:{family:'Space Mono',size:9},maxTicksLimit:6},
+          grid:{color:'#162040'}},
+        y:{ticks:{color:'#3D4566',font:{family:'Space Mono',size:9},
+            callback:v=>'$'+(v/1000000).toFixed(1)+'M'},grid:{color:'#162040'}}
+      }
+    }
+  });
+}
+
+// ── PG 2: Ranking ────────────────────────────────────────────
+function renderRanking(){
+  const ord=[...datos].sort((a,b)=>a.precio_total_px-b.precio_total_px);
+  const mej=ord[0];
+  document.getElementById('rk-n').textContent=datos.length+' búsquedas';
+
+  // Banner
+  document.getElementById('rk-ban').classList.add('show');
+  document.getElementById('rk-bv').textContent=fC(mej.precio_total_px);
+  document.getElementById('rk-bw').textContent=fFH(mej.fecha_consulta);
+  document.getElementById('rk-bi').textContent=fC(mej.precio_ida_px);
+  document.getElementById('rk-bvu').textContent=fC(mej.precio_vuelta_px);
+  document.getElementById('rk-b4').textContent=fC(mej.precio_total_4px||mej.precio_total_px*4);
+  const dm=mej.precio_total_px-BASE.total_px;
+  const el=document.getElementById('rk-bd');
+  el.style.color=dm<0?'var(--green)':'var(--red)';
+  el.textContent=dm<0?`▼ ${fC(Math.abs(dm))} más barato`:`▲ ${fC(dm)} más caro`;
+
+  // Lista
+  document.getElementById('rk-list').innerHTML=ord.map((r,i)=>{
+    const rk=i+1;
+    const cls=rk===1?'rg':rk===2?'rs':rk===3?'rb':'';
+    const clsC=rk===1?'cg':rk===2?'cs':rk===3?'cb':'cm';
+    const ico=rk===1?'🥇':rk===2?'🥈':rk===3?'🥉':rk;
+    const diff=r.precio_total_px-BASE.total_px;
+    const dPct=(Math.abs(diff)/BASE.total_px*100).toFixed(1);
+    const dTx=diff<0?`<span class="du">▼${dPct}%</span>`:diff>0?`<span class="dd">▲${dPct}%</span>`:`<span class="df">=</span>`;
+    const orig=r.es_manual?`<span class="bm">👆 MANUAL</span>`:`<span class="ba">⏱ AUTO</span>`;
+    const t4=r.precio_total_4px||r.precio_total_px*4;
+    return`<div class="rkrow ${cls}">
+      <div class="rknum ${clsC}">${ico}</div>
+      <div class="rkmain">
+        <div class="rkdt">${fFH(r.fecha_consulta)} ${dTx}</div>
+        <div class="rkpr">
+          <div class="rkpitem"><div class="rkplbl">IDA</div><div class="rkpval" style="color:var(--sky)">${fC(r.precio_ida_px)}</div></div>
+          <span class="sep">+</span>
+          <div class="rkpitem"><div class="rkplbl">VUELTA</div><div class="rkpval" style="color:var(--jade)">${fC(r.precio_vuelta_px)}</div></div>
+        </div>
+      </div>
+      <div class="rktot">
+        <div class="rktpx">${fC(r.precio_total_px)}<span style="font-size:9px;color:var(--muted)">/px</span></div>
+        <div class="rkt4">${fC(t4)} · 4px</div>
+        <div class="rkor">${orig}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── PG 3: Historial ──────────────────────────────────────────
+function renderHistorial(){
+  const el=document.getElementById('hist-list');
+  if(!datos.length){el.innerHTML='<div class="empty">Sin datos aún</div>';return}
+  el.innerHTML=datos.map(r=>{
+    const t4=r.precio_total_4px||r.precio_total_px*4;
+    const diff=r.precio_total_px-BASE.total_px;
+    const dCl=diff<0?'du':diff>0?'dd':'df';
+    const dTx=diff<0?`▼ ${fC(Math.abs(diff))}`:diff>0?`▲ ${fC(diff)}`:'= base';
+    const orig=r.es_manual?`<span class="bm">👆</span>`:`<span class="ba">⏱</span>`;
+    const al=r.alerta_enviada?`<span style="font-size:11px">🔔</span>`:'';
+    return`<div class="hrow">
+      <div>
+        <div class="hfecha">${fFH(r.fecha_consulta)} ${orig} ${al}</div>
+        <div class="hpr">
+          <div class="hpl">IDA</div><div class="hpv" style="color:var(--sky)">${fC(r.precio_ida_px)}</div>
+          <span class="sep">+</span>
+          <div class="hpl">VUELTA</div><div class="hpv" style="color:var(--jade)">${fC(r.precio_vuelta_px)}</div>
+        </div>
+      </div>
+      <div class="hright">
+        <div class="htpx">${fC(r.precio_total_px)}<span style="font-size:9px;color:var(--muted)">/px</span></div>
+        <div class="ht4">${fC(t4)} · 4px</div>
+        <div style="font-family:var(--mono);font-size:9px" class="${dCl}">${dTx}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── PG 4: Buscar ─────────────────────────────────────────────
+function renderBuscar(){
+  document.getElementById('b-tot').textContent=datos.length;
+  const manuales=datos.filter(r=>r.es_manual).sort((a,b)=>new Date(b.fecha_consulta)-new Date(a.fecha_consulta));
+  document.getElementById('b-ult').textContent=manuales[0]?fFH(manuales[0].fecha_consulta):'Ninguna aún';
+}
+
+// ── Botón buscar ─────────────────────────────────────────────
+let buscando=false;
+async function buscarAhora(){
+  if(buscando)return;
+  const btn=document.getElementById('btn-main');
+  const ico=document.getElementById('btn-ico');
+  const txt=document.getElementById('btn-txt');
+  if(!CFG.GITHUB_TOKEN||CFG.GITHUB_TOKEN==='TU_GITHUB_TOKEN'){
+    setSt('serr','⚠️ Configura GITHUB_TOKEN en el código.');return;
+  }
+  buscando=true;btn.disabled=true;btn.classList.add('loading');
+  ico.textContent='⟳';txt.textContent='LANZANDO...';
+  setSt('swait','⏳ Disparando el workflow en GitHub Actions...');
+  try{
+    const r=await fetch(
+      `https://api.github.com/repos/${CFG.GITHUB_OWNER}/${CFG.GITHUB_REPO}/actions/workflows/${CFG.GITHUB_WORKFLOW}/dispatches`,
+      {method:'POST',headers:{'Authorization':`token ${CFG.GITHUB_TOKEN}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+       body:JSON.stringify({ref:'main',inputs:{motivo:'Búsqueda manual dashboard'}})});
+    if(r.status===204){
+      document.getElementById('b-ult').textContent='Ahora mismo ⏳';
+      setSt('sok','✅ Lanzado. Resultado en ~2 min en Ranking e Historial.');
+      txt.textContent='EN PROGRESO...';ico.textContent='⏳';
+      setTimeout(()=>{
+        setSt('swait','🔄 Actualizando datos...');
+        cargar().then(()=>{setSt('sok','✅ Datos actualizados.');resetBtn();});
+      },150000);
+    }else if(r.status===401){setSt('serr','❌ Token inválido o sin permiso actions:write');resetBtn();}
+    else if(r.status===404){setSt('serr','❌ Repositorio o workflow no encontrado.');resetBtn();}
+    else{setSt('serr',`❌ Error ${r.status}`);resetBtn();}
+  }catch(e){setSt('serr',`❌ Error de red: ${e.message}`);resetBtn();}
+  buscando=false;
+}
+function setSt(cls,msg){const s=document.getElementById('sbox');s.className=`sbox show ${cls}`;s.textContent=msg;}
+function resetBtn(){
+  const b=document.getElementById('btn-main');
+  b.disabled=false;b.classList.remove('loading');
+  document.getElementById('btn-ico').textContent='🔍';
+  document.getElementById('btn-txt').textContent='BUSCAR AHORA';
+  buscando=false;
+}
+
+// ── Arranque ─────────────────────────────────────────────────
+cargar();
+setInterval(cargar,5*60*1000);
+</script>
+</body>
+</html>
