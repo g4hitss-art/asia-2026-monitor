@@ -427,24 +427,24 @@ def ciclo():
             tasa, var, d["nivel"], alerta,
         )
 
-    // Guardar en Supabase
-  const registro = {
-    "fecha_consulta":    datetime.now().isoformat(),
-    "precio_ida_px":     round(ida["precio_px"]),
-    "precio_vuelta_px":  round(vuelta["precio_px"]),
-    "precio_total_px":   round(total_px),
-    "precio_total_4px":  round(total_px * CONFIG["PASAJEROS"]),
-    "tasa_ref":          round(tasa, 2),
-    "var_ida_pct":       round(var_ida, 2),
-    "var_vuelta_pct":    round(var_vuelta, 2),
-    "nivel_ida":         ida["nivel"],
-    "nivel_vuelta":      vuelta["nivel"],
-    "alerta_enviada":    alerta,
-    "es_precio_base":    es_primera,
-    "es_manual":         False,  # True cuando se lanza desde el botón del dashboard
-    "aerolinea_ida":     ida["aerolinea"],
-    "aerolinea_vuelta":  vuelta["aerolinea"],
-  }
+    # Guardar en Supabase
+    registro = {
+        "fecha_consulta":    datetime.now().isoformat(),
+        "precio_ida_px":     round(ida["precio_px"]),
+        "precio_vuelta_px":  round(vuelta["precio_px"]),
+        "precio_total_px":   round(total_px),
+        "precio_total_4px":  round(total_px * CONFIG["PASAJEROS"]),
+        "tasa_ref":          round(tasa, 2),
+        "var_ida_pct":       round(var_ida, 2),
+        "var_vuelta_pct":    round(var_vuelta, 2),
+        "nivel_ida":         ida["nivel"],
+        "nivel_vuelta":      vuelta["nivel"],
+        "alerta_enviada":    alerta,
+        "es_precio_base":    es_primera,
+        "es_manual":         False,
+        "aerolinea_ida":     ida["aerolinea"],
+        "aerolinea_vuelta":  vuelta["aerolinea"],
+    }
     supabase_guardar(registro)
 
     # Enviar WhatsApp
