@@ -11,11 +11,9 @@ from datetime import datetime, timedelta
 import requests
 from twilio.rest import Client
 
-# ── Silenciar logs verbosos ──────────────────────────────────
 logging.getLogger("twilio").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-# ── Log ─────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
@@ -33,45 +31,32 @@ def sep(t=""):
         log.info(f"  {t}")
         log.info("=" * 62)
 
-# ── Configuración ────────────────────────────────────────────
 CONFIG = {
-    # RapidAPI — Sky Scrapper
     "RAPIDAPI_KEY":  os.getenv("RAPIDAPI_KEY", "18c21bf708msh8410cf978470aadp1af9ccjsnc83820ca5e5e"),
     "RAPIDAPI_HOST": "sky-scrapper.p.rapidapi.com",
-
-    # Twilio WhatsApp
-    "TWILIO_SID":   os.getenv("TWILIO_SID",   "AC6ba1ba9733df887c4c44cfe5b0696124"),
-    "TWILIO_TOKEN": os.getenv("TWILIO_TOKEN",  "b8c60fbeb944e468af52a06f78b66fca"),
-    "WA_DESDE":     "whatsapp:+14155238886",
+    "TWILIO_SID":    os.getenv("TWILIO_SID",   "AC6ba1ba9733df887c4c44cfe5b0696124"),
+    "TWILIO_TOKEN":  os.getenv("TWILIO_TOKEN",  "b8c60fbeb944e468af52a06f78b66fca"),
+    "WA_DESDE":      "whatsapp:+14155238886",
     "WA_NUMEROS": [
-        "whatsapp:+573102745611",  # Diego
-        "whatsapp:+573144624739",  # Juliana
+        "whatsapp:+573102745611",
+        "whatsapp:+573144624739",
     ],
-
-    # Supabase
-    "SUPABASE_URL": os.getenv("SUPABASE_URL", "https://qalxstxtuuvybudkqtpd.supabase.co"),
-    "SUPABASE_KEY": os.getenv("SUPABASE_KEY", "sb_secret_O5MF06-7ueAeDlo8zLg4YQ_LU4VaycC"),
-
-    # Ruta Carlos — IDA
+    "SUPABASE_URL":  os.getenv("SUPABASE_URL", "https://qalxstxtuuvybudkqtpd.supabase.co"),
+    "SUPABASE_KEY":  os.getenv("SUPABASE_KEY", "sb_secret_O5MF06-7ueAeDlo8zLg4YQ_LU4VaycC"),
     "IDA_ORIGEN":      "BOG",
     "IDA_DESTINO":     "NRT",
     "IDA_FECHA":       "2026-10-23",
     "IDA_AEROLINEAS":  "Avianca + Zipair",
     "IDA_FILTRO":      ["avianca", "zipair"],
-
-    # Ruta Carlos — VUELTA
     "VUELTA_ORIGEN":    "ICN",
     "VUELTA_DESTINO":   "BOG",
     "VUELTA_FECHA":     "2026-11-15",
     "VUELTA_AEROLINEAS": "Air Premia + Avianca",
     "VUELTA_FILTRO":    ["air premia", "airpremia", "avianca"],
-
-    # Precios base Carlos (por persona)
     "PRECIO_BASE_IDA_PX":    3_160_141,
     "PRECIO_BASE_VUELTA_PX": 3_163_941,
     "PRECIO_BASE_TOTAL_PX":  6_324_082,
     "PRECIO_BASE_TOTAL_4PX": 25_296_328,
-
     "PASAJEROS":         4,
     "UMBRAL_BAJADA_PCT": 3,
     "DB":                "monitor_carlos.db",
@@ -89,7 +74,13 @@ LINKS = {
     "vuelta": "https://www.skyscanner.com.co/transporte/vuelos/icn/bog/261115/?adults=4&cabinclass=economy",
 }
 
-# ── Supabase ─────────────────────────────────────────────────
+# EntityIDs fijos de Skyscanner — no cambian
+AIRPORT_IDS = {
+    "BOG": ("BOG", "27539669"),
+    "NRT": ("NRT", "95673529"),
+    "ICN": ("ICN", "95673419"),
+}
+
 def supabase_guardar(registro: dict):
     url = CONFIG["SUPABASE_URL"]
     key = CONFIG["SUPABASE_KEY"]
@@ -114,7 +105,6 @@ def supabase_guardar(registro: dict):
     except Exception as e:
         log.warning(f"  Supabase error: {e}")
 
-# ── DB local ─────────────────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(CONFIG["DB"])
     conn.cursor().execute("""
@@ -147,7 +137,6 @@ def ultimo_precio_local(tramo):
     conn.close()
     return r[0] if r else None
 
-# ── TRM ──────────────────────────────────────────────────────
 def tasa_cop():
     try:
         r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10)
@@ -158,12 +147,12 @@ def tasa_cop():
         log.warning(f"TRM fallback $4,200: {e}")
         return 4_200.0
 
-# ── Sky Scrapper: entityId de aeropuerto ─────────────────────
-_entity_cache = {}
-
 def get_entity_id(sky_id: str) -> tuple:
-    if sky_id in _entity_cache:
-        return _entity_cache[sky_id]
+    if sky_id in AIRPORT_IDS:
+        sid, eid = AIRPORT_IDS[sky_id]
+        log.info(f"  Airport {sky_id}: entityId={eid}")
+        return sid, eid
+    # Fallback API
     try:
         r = requests.get(
             f"{BASE_URL}/api/v1/flights/searchAirport",
@@ -171,27 +160,21 @@ def get_entity_id(sky_id: str) -> tuple:
             params={"query": sky_id, "locale": "en-US"},
             timeout=15,
         )
-        places = r.json().get("data", [])
-        for p in places:
-            if p.get("skyId", "").upper() == sky_id.upper():
-                eid = p.get("entityId", "")
-                _entity_cache[sky_id] = (sky_id, eid)
+        raw = r.json()
+        log.info(f"  Airport API raw: {str(raw)[:400]}")
+        for p in raw.get("data", []):
+            eid = (p.get("entityId") or p.get("id") or
+                   p.get("presentation", {}).get("id", ""))
+            sid = p.get("skyId", sky_id)
+            if eid:
                 log.info(f"  Airport {sky_id}: entityId={eid}")
-                return sky_id, eid
-        if places:
-            p = places[0]
-            sky = p.get("skyId", sky_id)
-            eid = p.get("entityId", "")
-            _entity_cache[sky_id] = (sky, eid)
-            log.info(f"  Airport {sky_id} (fallback): entityId={eid}")
-            return sky, eid
+                return sid, eid
     except Exception as e:
         log.warning(f"  Error entityId {sky_id}: {e}")
     return sky_id, ""
 
-# ── Sky Scrapper: buscar vuelos ───────────────────────────────
 def buscar_precio(tramo: str, origen: str, destino: str,
-                  fecha: str, tasa: float) -> dict | None:
+                  fecha: str, tasa: float):
 
     filtro     = CONFIG["IDA_FILTRO"]     if tramo == "IDA" else CONFIG["VUELTA_FILTRO"]
     aero_label = CONFIG["IDA_AEROLINEAS"] if tramo == "IDA" else CONFIG["VUELTA_AEROLINEAS"]
@@ -232,13 +215,14 @@ def buscar_precio(tramo: str, origen: str, destino: str,
             )
 
             if r.status_code != 200:
-                log.warning(f"  HTTP {r.status_code}: {r.text[:100]}")
+                log.warning(f"  HTTP {r.status_code}: {r.text[:200]}")
                 continue
 
             itineraries = r.json().get("data", {}).get("itineraries", [])
 
             if not itineraries:
                 log.warning(f"  Sin itinerarios para {tramo}")
+                log.info(f"  Response keys: {list(r.json().get('data', {}).keys())}")
                 continue
 
             log.info(f"  {len(itineraries)} itinerarios encontrados")
@@ -247,7 +231,6 @@ def buscar_precio(tramo: str, origen: str, destino: str,
             mejor_info = {}
 
             for it in itineraries:
-                # Precio en USD
                 price_obj = it.get("price", {})
                 raw = price_obj.get("raw") or price_obj.get("formatted", "")
                 try:
@@ -255,7 +238,6 @@ def buscar_precio(tramo: str, origen: str, destino: str,
                 except Exception:
                     continue
 
-                # Aerolíneas del itinerario
                 legs  = it.get("legs", [])
                 aeros = []
                 for leg in legs:
@@ -264,10 +246,10 @@ def buscar_precio(tramo: str, origen: str, destino: str,
                         if n:
                             aeros.append(n)
 
-                aero_str   = " + ".join(aeros)
+                aero_str    = " + ".join(aeros)
                 es_objetivo = any(any(f in a for f in filtro) for a in aeros)
 
-                log.info(f"    {'✅' if es_objetivo else '❌'} {aero_str} → ${precio_usd:,.0f} USD")
+                log.info(f"    {'OK' if es_objetivo else '--'} {aero_str} → ${precio_usd:,.0f} USD total")
 
                 if not es_objetivo:
                     continue
@@ -281,14 +263,13 @@ def buscar_precio(tramo: str, origen: str, destino: str,
                     mejor_info = {
                         "precio_4px": precio_cop_total,
                         "hora":       leg0.get("departure", ""),
-                        "duracion":   leg0.get("durationInMinutes", ""),
                     }
 
             if mejor_px is None:
-                log.warning(f"  {tramo}: No encontró {aero_label} en resultados")
+                log.warning(f"  {tramo}: No encontro {aero_label} en resultados")
                 continue
 
-            log.info(f"  ✅ {tramo}: ${mejor_px:,.0f} COP/px · ${mejor_info['precio_4px']:,.0f} COP total 4px")
+            log.info(f"  RESULTADO {tramo}: ${mejor_px:,.0f} COP/px · ${mejor_info['precio_4px']:,.0f} COP 4px")
             return {
                 "tramo":      tramo,
                 "precio_px":  mejor_px,
@@ -304,51 +285,43 @@ def buscar_precio(tramo: str, origen: str, destino: str,
     log.warning(f"  {tramo}: No se pudo obtener precio tras 3 intentos")
     return None
 
-# ── WhatsApp ─────────────────────────────────────────────────
 def enviar_whatsapp(ida, vuelta, tasa, var_ida, var_vuelta, es_base=False):
     try:
         client    = Client(CONFIG["TWILIO_SID"], CONFIG["TWILIO_TOKEN"])
         total_px  = ida["precio_px"] + vuelta["precio_px"]
         total_4px = total_px * CONFIG["PASAJEROS"]
         ahorro_px = CONFIG["PRECIO_BASE_TOTAL_PX"] - total_px
-
-        enc = "PRECIO BASE REGISTRADO" if es_base else "ALERTA PRECIO BAJO"
-        pie = "Monitoreando desde este precio." if es_base else "Buen momento para comprar!"
+        enc = "PRECIO BASE" if es_base else "ALERTA PRECIO BAJO"
+        pie = "Monitoreando." if es_base else "Buen momento para comprar!"
 
         msg  = f"[{enc}] Monitor Ruta Carlos — Asia 2026\n"
-        msg += f"{'='*34}\n"
-        msg += f"IDA (Oct 23) BOG→SAL→SFO→NRT · Avianca+Zipair\n"
+        msg += f"IDA (Oct 23) BOG->NRT Avianca+Zipair\n"
         msg += f"Precio/px: ${ida['precio_px']:,.0f} COP\n"
         msg += f"Base Carlos: ${CONFIG['PRECIO_BASE_IDA_PX']:,.0f} COP\n"
         if var_ida: msg += f"Variacion: {var_ida:+.1f}%\n"
-        msg += f"{'='*34}\n"
-        msg += f"VUELTA (Nov 15) ICN→SFO→SAL→BOG · AirPremi+Avianca\n"
+        msg += f"VUELTA (Nov 15) ICN->BOG AirPremi+Avianca\n"
         msg += f"Precio/px: ${vuelta['precio_px']:,.0f} COP\n"
         msg += f"Base Carlos: ${CONFIG['PRECIO_BASE_VUELTA_PX']:,.0f} COP\n"
         if var_vuelta: msg += f"Variacion: {var_vuelta:+.1f}%\n"
-        msg += f"{'='*34}\n"
-        msg += f"TOTAL/px: ${total_px:,.0f} COP\n"
-        msg += f"TOTAL 4px: ${total_4px:,.0f} COP\n"
+        msg += f"TOTAL/px: ${total_px:,.0f} | 4px: ${total_4px:,.0f} COP\n"
         if not es_base and ahorro_px > 0:
-            msg += f"AHORRO/px: ${ahorro_px:,.0f} COP\n"
-        msg += f"TRM: ${tasa:,.0f}\n"
+            msg += f"AHORRO: ${ahorro_px:,.0f}/px | ${ahorro_px*4:,.0f} grupo\n"
         msg += f"IDA: {LINKS['ida']}\nVUELTA: {LINKS['vuelta']}\n{pie}"
 
         enviados = 0
         for num in CONFIG["WA_NUMEROS"]:
             try:
                 client.messages.create(body=msg, from_=CONFIG["WA_DESDE"], to=num)
-                log.info(f"  WhatsApp → {num} OK")
+                log.info(f"  WhatsApp -> {num} OK")
                 enviados += 1
             except Exception as e:
-                log.error(f"  WhatsApp → {num} ERROR: {e}")
+                log.error(f"  WhatsApp -> {num} ERROR: {e}")
             time.sleep(1)
         return enviados > 0
     except Exception as e:
         log.error(f"  WhatsApp error: {e}")
         return False
 
-# ── Ciclo principal ───────────────────────────────────────────
 def ciclo():
     sep(f"CICLO — {datetime.now().strftime('%A %d/%m/%Y %H:%M:%S')}")
     tasa = tasa_cop()
@@ -372,8 +345,8 @@ def ciclo():
     alerta = False
     if not es_primera:
         if total_px < CONFIG["PRECIO_BASE_TOTAL_PX"]: alerta = True
-        if var_ida    >= CONFIG["UMBRAL_BAJADA_PCT"]: alerta = True
-        if var_vuelta >= CONFIG["UMBRAL_BAJADA_PCT"]: alerta = True
+        if var_ida    >= CONFIG["UMBRAL_BAJADA_PCT"]:  alerta = True
+        if var_vuelta >= CONFIG["UMBRAL_BAJADA_PCT"]:  alerta = True
 
     guardar_local("IDA",    ida["precio_px"],    tasa, var_ida,    alerta)
     guardar_local("VUELTA", vuelta["precio_px"], tasa, var_vuelta, alerta)
@@ -412,15 +385,14 @@ def ciclo():
         log.info(f"*** MAS BARATO QUE CARLOS: ${abs(diff):,.0f}/px ***")
     else:
         log.info(f"Mas caro que Carlos: +${diff:,.0f}/px")
-    log.info(f"Proxima revision: {(datetime.now()+timedelta(hours=3)).strftime('%Y-%m-%d %H:%M')}")
+    log.info(f"Proxima: {(datetime.now()+timedelta(hours=3)).strftime('%Y-%m-%d %H:%M')}")
 
-# ── Main ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     sep("MONITOR RUTA CARLOS — Asia 2026")
     log.info(f"IDA   : {CONFIG['IDA_ORIGEN']}→{CONFIG['IDA_DESTINO']} · {CONFIG['IDA_FECHA']}")
     log.info(f"VUELTA: {CONFIG['VUELTA_ORIGEN']}→{CONFIG['VUELTA_DESTINO']} · {CONFIG['VUELTA_FECHA']}")
     log.info(f"Base  : ${CONFIG['PRECIO_BASE_TOTAL_PX']:,} COP/px")
-    log.info(f"API   : Sky Scrapper (Skyscanner) via RapidAPI")
+    log.info(f"API   : Sky Scrapper via RapidAPI")
     sep()
     init_db()
     ciclo()
