@@ -2,8 +2,7 @@
 Monitor de Vuelos — Ruta Exacta Carlos
 BOG → SAL → SFO → NRT  (Avianca + Zipair)  IDA  · 23 Oct 2026
 ICN → SFO → SAL → BOG  (Air Premia + Avianca) VUELTA · 15 Nov 2026
-
-API: Sky Scrapper (Skyscanner) via RapidAPI
+API: Sky Scrapper v2 via RapidAPI
 """
 
 import os, time, sqlite3, logging, sys
@@ -41,22 +40,26 @@ CONFIG = {
         "whatsapp:+573102745611",
         "whatsapp:+573144624739",
     ],
-    "SUPABASE_URL":  os.getenv("SUPABASE_URL", "https://qalxstxtuuvybudkqtpd.supabase.co"),
-    "SUPABASE_KEY":  os.getenv("SUPABASE_KEY", "sb_secret_O5MF06-7ueAeDlo8zLg4YQ_LU4VaycC"),
+    "SUPABASE_URL": os.getenv("SUPABASE_URL", "https://qalxstxtuuvybudkqtpd.supabase.co"),
+    "SUPABASE_KEY": os.getenv("SUPABASE_KEY", "sb_secret_O5MF06-7ueAeDlo8zLg4YQ_LU4VaycC"),
+
     "IDA_ORIGEN":      "BOG",
     "IDA_DESTINO":     "NRT",
     "IDA_FECHA":       "2026-10-23",
     "IDA_AEROLINEAS":  "Avianca + Zipair",
     "IDA_FILTRO":      ["avianca", "zipair"],
-    "VUELTA_ORIGEN":    "ICN",
-    "VUELTA_DESTINO":   "BOG",
-    "VUELTA_FECHA":     "2026-11-15",
+
+    "VUELTA_ORIGEN":     "ICN",
+    "VUELTA_DESTINO":    "BOG",
+    "VUELTA_FECHA":      "2026-11-15",
     "VUELTA_AEROLINEAS": "Air Premia + Avianca",
-    "VUELTA_FILTRO":    ["air premia", "airpremia", "avianca"],
+    "VUELTA_FILTRO":     ["air premia", "airpremia", "avianca"],
+
     "PRECIO_BASE_IDA_PX":    3_160_141,
     "PRECIO_BASE_VUELTA_PX": 3_163_941,
     "PRECIO_BASE_TOTAL_PX":  6_324_082,
     "PRECIO_BASE_TOTAL_4PX": 25_296_328,
+
     "PASAJEROS":         4,
     "UMBRAL_BAJADA_PCT": 3,
     "DB":                "monitor_carlos.db",
@@ -69,18 +72,19 @@ HEADERS_RAPID = {
 
 BASE_URL = f"https://{CONFIG['RAPIDAPI_HOST']}"
 
+# EntityIDs verificados via API
+AIRPORT_IDS = {
+    "BOG": ("BOG", "95673344"),
+    "NRT": ("NRT", "128668889"),
+    "ICN": ("ICN", "95673659"),
+}
+
 LINKS = {
     "ida":    "https://www.skyscanner.com.co/transporte/vuelos/bog/nrt/261023/?adults=4&cabinclass=economy",
     "vuelta": "https://www.skyscanner.com.co/transporte/vuelos/icn/bog/261115/?adults=4&cabinclass=economy",
 }
 
-# EntityIDs fijos de Skyscanner — no cambian
-AIRPORT_IDS = {
-    "BOG": ("BOG", "27539669"),
-    "NRT": ("NRT", "95673529"),
-    "ICN": ("ICN", "95673419"),
-}
-
+# ── Supabase ─────────────────────────────────────────────────
 def supabase_guardar(registro: dict):
     url = CONFIG["SUPABASE_URL"]
     key = CONFIG["SUPABASE_KEY"]
@@ -95,8 +99,7 @@ def supabase_guardar(registro: dict):
                 "Content-Type": "application/json",
                 "Prefer": "return=minimal",
             },
-            json=registro,
-            timeout=15,
+            json=registro, timeout=15,
         )
         if r.status_code in (200, 201):
             log.info("  Supabase: guardado OK")
@@ -105,6 +108,7 @@ def supabase_guardar(registro: dict):
     except Exception as e:
         log.warning(f"  Supabase error: {e}")
 
+# ── DB local ─────────────────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(CONFIG["DB"])
     conn.cursor().execute("""
@@ -137,6 +141,7 @@ def ultimo_precio_local(tramo):
     conn.close()
     return r[0] if r else None
 
+# ── TRM ──────────────────────────────────────────────────────
 def tasa_cop():
     try:
         r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10)
@@ -147,46 +152,15 @@ def tasa_cop():
         log.warning(f"TRM fallback $4,200: {e}")
         return 4_200.0
 
-def get_entity_id(sky_id: str) -> tuple:
-    if sky_id in AIRPORT_IDS:
-        sid, eid = AIRPORT_IDS[sky_id]
-        log.info(f"  Airport {sky_id}: entityId={eid}")
-        return sid, eid
-    # Fallback API
-    try:
-        r = requests.get(
-            f"{BASE_URL}/api/v1/flights/searchAirport",
-            headers=HEADERS_RAPID,
-            params={"query": sky_id, "locale": "en-US"},
-            timeout=15,
-        )
-        raw = r.json()
-        log.info(f"  Airport API raw: {str(raw)[:400]}")
-        for p in raw.get("data", []):
-            eid = (p.get("entityId") or p.get("id") or
-                   p.get("presentation", {}).get("id", ""))
-            sid = p.get("skyId", sky_id)
-            if eid:
-                log.info(f"  Airport {sky_id}: entityId={eid}")
-                return sid, eid
-    except Exception as e:
-        log.warning(f"  Error entityId {sky_id}: {e}")
-    return sky_id, ""
-
-def buscar_precio(tramo: str, origen: str, destino: str,
-                  fecha: str, tasa: float):
-
+# ── Buscar precio ─────────────────────────────────────────────
+def buscar_precio(tramo: str, origen: str, destino: str, fecha: str, tasa: float):
     filtro     = CONFIG["IDA_FILTRO"]     if tramo == "IDA" else CONFIG["VUELTA_FILTRO"]
     aero_label = CONFIG["IDA_AEROLINEAS"] if tramo == "IDA" else CONFIG["VUELTA_AEROLINEAS"]
 
-    log.info(f"  Buscando {tramo}: {origen}→{destino} · {fecha} · {aero_label}")
+    orig_sky, orig_eid = AIRPORT_IDS[origen]
+    dest_sky, dest_eid = AIRPORT_IDS[destino]
 
-    orig_sky, orig_eid = get_entity_id(origen)
-    dest_sky, dest_eid = get_entity_id(destino)
-
-    if not orig_eid or not dest_eid:
-        log.warning(f"  No se pudieron obtener entityIds para {origen}/{destino}")
-        return None
+    log.info(f"  Buscando {tramo}: {origen}({orig_eid})→{destino}({dest_eid}) · {fecha} · {aero_label}")
 
     for intento in range(1, 4):
         try:
@@ -195,7 +169,7 @@ def buscar_precio(tramo: str, origen: str, destino: str,
                 time.sleep(15)
 
             r = requests.get(
-                f"{BASE_URL}/api/v2/flights/searchFlightsComplete",
+                f"{BASE_URL}/api/v2/flights/searchFlights",
                 headers=HEADERS_RAPID,
                 params={
                     "originSkyId":         orig_sky,
@@ -215,26 +189,25 @@ def buscar_precio(tramo: str, origen: str, destino: str,
             )
 
             if r.status_code != 200:
-                log.warning(f"  HTTP {r.status_code}: {r.text[:200]}")
+                log.warning(f"  HTTP {r.status_code}")
                 continue
 
-            itineraries = r.json().get("data", {}).get("itineraries", [])
+            resp  = r.json()
+            itins = resp.get("data", {}).get("itineraries", [])
 
-            if not itineraries:
+            if not itins:
                 log.warning(f"  Sin itinerarios para {tramo}")
-                log.info(f"  Response keys: {list(r.json().get('data', {}).keys())}")
                 continue
 
-            log.info(f"  {len(itineraries)} itinerarios encontrados")
+            log.info(f"  {len(itins)} itinerarios encontrados")
 
             mejor_px   = None
             mejor_info = {}
 
-            for it in itineraries:
-                price_obj = it.get("price", {})
-                raw = price_obj.get("raw") or price_obj.get("formatted", "")
+            for it in itins:
+                price_raw = it.get("price", {}).get("raw", None)
                 try:
-                    precio_usd = float(str(raw).replace("$","").replace(",","").strip())
+                    precio_usd = float(str(price_raw).replace("$","").replace(",",""))
                 except Exception:
                     continue
 
@@ -249,7 +222,7 @@ def buscar_precio(tramo: str, origen: str, destino: str,
                 aero_str    = " + ".join(aeros)
                 es_objetivo = any(any(f in a for f in filtro) for a in aeros)
 
-                log.info(f"    {'OK' if es_objetivo else '--'} {aero_str} → ${precio_usd:,.0f} USD total")
+                log.info(f"    {'OK' if es_objetivo else '--'} {aero_str} → ${precio_usd:,.0f} USD total 4px")
 
                 if not es_objetivo:
                     continue
@@ -266,7 +239,7 @@ def buscar_precio(tramo: str, origen: str, destino: str,
                     }
 
             if mejor_px is None:
-                log.warning(f"  {tramo}: No encontro {aero_label} en resultados")
+                log.warning(f"  {tramo}: No encontro {aero_label} en {len(itins)} resultados")
                 continue
 
             log.info(f"  RESULTADO {tramo}: ${mejor_px:,.0f} COP/px · ${mejor_info['precio_4px']:,.0f} COP 4px")
@@ -285,6 +258,7 @@ def buscar_precio(tramo: str, origen: str, destino: str,
     log.warning(f"  {tramo}: No se pudo obtener precio tras 3 intentos")
     return None
 
+# ── WhatsApp ─────────────────────────────────────────────────
 def enviar_whatsapp(ida, vuelta, tasa, var_ida, var_vuelta, es_base=False):
     try:
         client    = Client(CONFIG["TWILIO_SID"], CONFIG["TWILIO_TOKEN"])
@@ -306,6 +280,7 @@ def enviar_whatsapp(ida, vuelta, tasa, var_ida, var_vuelta, es_base=False):
         msg += f"TOTAL/px: ${total_px:,.0f} | 4px: ${total_4px:,.0f} COP\n"
         if not es_base and ahorro_px > 0:
             msg += f"AHORRO: ${ahorro_px:,.0f}/px | ${ahorro_px*4:,.0f} grupo\n"
+        msg += f"TRM: ${tasa:,.0f}\n"
         msg += f"IDA: {LINKS['ida']}\nVUELTA: {LINKS['vuelta']}\n{pie}"
 
         enviados = 0
@@ -322,6 +297,7 @@ def enviar_whatsapp(ida, vuelta, tasa, var_ida, var_vuelta, es_base=False):
         log.error(f"  WhatsApp error: {e}")
         return False
 
+# ── Ciclo ─────────────────────────────────────────────────────
 def ciclo():
     sep(f"CICLO — {datetime.now().strftime('%A %d/%m/%Y %H:%M:%S')}")
     tasa = tasa_cop()
@@ -387,12 +363,13 @@ def ciclo():
         log.info(f"Mas caro que Carlos: +${diff:,.0f}/px")
     log.info(f"Proxima: {(datetime.now()+timedelta(hours=3)).strftime('%Y-%m-%d %H:%M')}")
 
+# ── Main ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     sep("MONITOR RUTA CARLOS — Asia 2026")
     log.info(f"IDA   : {CONFIG['IDA_ORIGEN']}→{CONFIG['IDA_DESTINO']} · {CONFIG['IDA_FECHA']}")
     log.info(f"VUELTA: {CONFIG['VUELTA_ORIGEN']}→{CONFIG['VUELTA_DESTINO']} · {CONFIG['VUELTA_FECHA']}")
     log.info(f"Base  : ${CONFIG['PRECIO_BASE_TOTAL_PX']:,} COP/px")
-    log.info(f"API   : Sky Scrapper via RapidAPI")
+    log.info(f"API   : Sky Scrapper v2 via RapidAPI")
     sep()
     init_db()
     ciclo()
