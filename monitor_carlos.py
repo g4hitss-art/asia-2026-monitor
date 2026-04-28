@@ -258,7 +258,7 @@ def buscar_precio_skyscanner(tramo: str, origen: str, destino: str,
 
                 # Convertir a COP si viene en USD
                 precio_cop = (precio if precio > 50_000
-                              else precio * CONFIG["PASAJEROS"] * tasa)
+              else precio * tasa)
 
                 if mejor_cop is None or precio_cop < mejor_cop:
                     mejor_cop = precio_cop
