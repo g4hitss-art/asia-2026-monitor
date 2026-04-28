@@ -303,7 +303,7 @@ def ciclo():
     tasa = tasa_cop()
 
     ida    = buscar_precio("IDA",    CONFIG["IDA_ORIGEN"],    CONFIG["IDA_DESTINO"],    CONFIG["IDA_FECHA"],    tasa)
-    time.sleep(5)
+    time.sleep(30)
     vuelta = buscar_precio("VUELTA", CONFIG["VUELTA_ORIGEN"], CONFIG["VUELTA_DESTINO"], CONFIG["VUELTA_FECHA"], tasa)
 
     if not ida or not vuelta:
